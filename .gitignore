@@ -1,0 +1,10 @@
+
+#Notes for the Project
+notes.txt
+
+#CMake build dirs
+build*/
+
+.cache/
+
+
