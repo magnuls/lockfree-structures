@@ -1,16 +1,20 @@
 cmake_minimum_required(VERSION 3.20)
 project(LockFreeDS LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
 endif()
 
 option(LFDS_BUILD_TESTS "Build tests" ON)
-set(LFDS_SANITIZER "" CACHE STRING "Sanitizer: thread, address, undefined, or empty")
+set(LFDS_SANITIZER
+    ""
+    CACHE STRING
+    "Sanitizer: thread, address, undefined, or empty"
+)
 
 find_package(Threads REQUIRED)
 
@@ -22,14 +26,17 @@ target_link_libraries(lfds INTERFACE Threads::Threads)
 target_compile_options(lfds INTERFACE -Wall -Wextra -Wpedantic)
 
 if(LFDS_SANITIZER)
-  target_compile_options(lfds INTERFACE -fsanitize=${LFDS_SANITIZER} -fno-omit-frame-pointer -g)
-  target_link_options(lfds INTERFACE -fsanitize=${LFDS_SANITIZER})
+    target_compile_options(
+        lfds
+        INTERFACE -fsanitize=${LFDS_SANITIZER} -fno-omit-frame-pointer -g
+    )
+    target_link_options(lfds INTERFACE -fsanitize=${LFDS_SANITIZER})
 endif()
 
 add_executable(lfds_demo src/main.cpp)
 target_link_libraries(lfds_demo PRIVATE lfds::lfds)
 
 if(LFDS_BUILD_TESTS)
-  enable_testing()
-  add_subdirectory(tests)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
