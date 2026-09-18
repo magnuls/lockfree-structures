@@ -52,7 +52,20 @@ class SpscRingBuffer {
     SpscRingBuffer& operator=(SpscRingBuffer&&) = delete;
 
     template<typename... Args>
-    bool emplace(Args&&... args) {}
+    // Requires that we can construct T from Args...
+        requires std::constructible_from<T, Args...>
+    void emplace(Args&&... args) {
+        // memory_order_relaxed is used since a thread always sees its own writes in program order
+        const usize pro_pos = producer_pos_.load(std::memory_order_relaxed);
+        while (pro_pos - cached_consumer == capacity_) {
+            consumer_pos_.wait(cached_consumer, std::memory_order_acquire);
+            cached_consumer = consumer_pos_.load(std::memory_order_acquire);
+        }
+        std::allocator_traits<Allocator>::construct(alloc_, std::to_address(get_index(pro_pos)),
+                                                    std::forward<Args>(args)...);
+        producer_pos_.store(pro_pos + 1, std::memory_order_release);
+        producer_pos_.notify_one();
+    }
 
     template<typename... Args>
         requires std::constructible_from<T, Args...>
@@ -66,7 +79,7 @@ class SpscRingBuffer {
         std::allocator_traits<Allocator>::construct(alloc_, std::to_address(get_index(pro_pos)),
                                                     std::forward<Args>(args)...);
         producer_pos_.store(pro_pos + 1, std::memory_order_release);
-        producer_pos_.notify_one(); // Notifies thread on try_pop
+        producer_pos_.notify_one(); // Notifies a waiting thread
         return true;
     }
 
