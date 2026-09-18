@@ -52,7 +52,23 @@ class SpscRingBuffer {
     SpscRingBuffer& operator=(SpscRingBuffer&&) = delete;
 
     template<typename... Args>
-    bool try_emplace(Args&&... args) {}
+    bool emplace(Args&&... args) {}
+
+    template<typename... Args>
+        requires std::constructible_from<T, Args...>
+    bool try_emplace(Args&&... args) {
+        const usize pro_pos = producer_pos_.load(std::memory_order_relaxed);
+        if (pro_pos - cached_consumer == capacity_) {
+            cached_consumer = consumer_pos_.load(std::memory_order_acquire);
+            if (pro_pos - cached_consumer == capacity_)
+                return false;
+        }
+        std::allocator_traits<Allocator>::construct(alloc_, std::to_address(get_index(pro_pos)),
+                                                    std::forward<Args>(args)...);
+        producer_pos_.store(pro_pos + 1, std::memory_order_release);
+        producer_pos_.notify_one(); // Notifies thread on try_pop
+        return true;
+    }
 
     bool try_push(const T& v) {}
     bool try_push(T&& v) {}
@@ -60,22 +76,34 @@ class SpscRingBuffer {
     bool try_pop(T& out) {}
     std::optional<T> try_pop() {}
 
+    usize size() const {}
+    bool empty() const {}
+    bool full() const {}
+
+    static constexpr usize capacity() {}
+
   private:
-    T* slot(usize pos) {}
+    /*
+     We use [[no_unique_address]] since allocators are commonly empty
+     and the attirbute lets the empty case cost zero bytes while the
+     other is unaffected
+    */
+    [[no_unique_address]] Allocator alloc_;
+    // Raw storage for capacity_T and points to first slot
+    std::allocator_traits<Allocator>::pointer ptr_;
+    usize mask_;
+    usize capacity_;
+    // Consumer and Producer
+    alignas(CacheLine) std::atomic<usize> producer_pos_{};
+    alignas(CacheLine) usize cached_consumer{};
+    alignas(CacheLine) std::atomic<usize> consumer_pos_{};
+    alignas(CacheLine) usize cached_producer{};
 
-    alignas(T) std::byte storage_[N * sizeof(T)];
-
-    struct alignas(CacheLine) {
-        std::atomic<usize> producer_pos_{};
-        usize cached_consumer{};
-    };
-    struct alignas(CacheLine) {
-        std::atomic<usize> consumer_pos_{};
-        usize cached_producer{};
-    };
+    std::allocator_traits<Allocator>::pointer get_index(usize n) {
+        return ptr_ + (n & mask_);
+    }
 };
 
 int main() {
-
     return 0;
 }
