@@ -1,7 +1,9 @@
 #include "../include/types.hpp"
 #include <array>
 #include <atomic>
+#include <concepts>
 #include <iostream>
+#include <memory>
 
 using std::cout, std::cin;
 
@@ -10,7 +12,11 @@ constexpr bool is_power_of_two(T x) {
     return x > 0 && (x & (x - 1)) == 0;
 }
 
-inline constexpr usize CacheLine = 64;
+#ifdef __cpp_lib_hardware_interference_size
+inline constexpr std::size_t CacheLine = std::hardware_destructive_interference_size;
+#else
+inline constexpr std::size_t CacheLine = 64;
+#endif
 
 /*
  * Invariants:
