@@ -108,6 +108,15 @@ class SpscRingBuffer {
         return try_emplace(std::move(v));
     }
 
+    void push(const T& v)
+        requires std::is_copy_constructible_v<T>
+    {
+        emplace(v);
+    }
+    void push(T&& v) {
+        emplace(std::move(v));
+    }
+
     bool try_pop(T& out) {}
     std::optional<T> try_pop() {}
 
