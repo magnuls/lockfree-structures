@@ -4,6 +4,7 @@
 #include <concepts>
 #include <iostream>
 #include <memory>
+#include <type_traits>
 
 using std::cout, std::cin;
 
@@ -13,19 +14,24 @@ constexpr bool is_power_of_two(T x) {
 }
 
 #ifdef __cpp_lib_hardware_interference_size
-inline constexpr std::size_t CacheLine = std::hardware_destructive_interference_size;
+inline constexpr std::size_t CacheLine =
+    std::hardware_destructive_interference_size;
 #else
 inline constexpr std::size_t CacheLine = 64;
 #endif
 
 /*
  * Invariants:
-   - exactly one thread calls the producer API; exactly one calls the consumer API
-   - producer_pos_ is monotonically increasing, written only by the producer
-   - consumer_pos_ is monotonically increasing, written only by the consumer
-   - consumer_pos_ <= producer_pos_ always, so size == producer_pos_ - consumer_pos_
-   - slots in [consumer_pos_, producer_pos_) hold constructed objects; all others are
-     raw
+   - exactly one thread calls the producer API; exactly one calls the
+ consumer API
+   - producer_pos_ is monotonically increasing, written only by the
+ producer
+   - consumer_pos_ is monotonically increasing, written only by the
+ consumer
+   - consumer_pos_ <= producer_pos_ always, so size == producer_pos_ -
+ consumer_pos_
+   - slots in [consumer_pos_, producer_pos_) hold constructed objects;
+ all others are raw
  */
 template<typename T, typename Allocator = std::allocator<T>>
     requires std::is_nothrow_destructible_v<T>
@@ -37,9 +43,11 @@ class SpscRingBuffer {
     SpscRingBuffer(usize capacity, const Allocator& a = Allocator())
         : capacity_(capacity), alloc_(a), mask_(capacity - 1) {
         if (!is_power_of_two(capacity_))
-            throw std::invalid_argument("capacity must be a power of two");
+            throw std::invalid_argument(
+                "capacity must be a power of two");
         // Allocate capacity
-        ptr_ = std::allocator_traits<Allocator>::allocate(alloc_, capacity_);
+        ptr_ = std::allocator_traits<Allocator>::allocate(alloc_,
+                                                          capacity_);
     }
     ~SpscRingBuffer() {
         // Destroy everything in the range of
@@ -55,14 +63,19 @@ class SpscRingBuffer {
     // Requires that we can construct T from Args...
         requires std::constructible_from<T, Args...>
     void emplace(Args&&... args) {
-        // memory_order_relaxed is used since a thread always sees its own writes in program order
-        const usize pro_pos = producer_pos_.load(std::memory_order_relaxed);
+        // memory_order_relaxed is used since a thread always sees its
+        // own writes in program order
+        const usize pro_pos =
+            producer_pos_.load(std::memory_order_relaxed);
         while (pro_pos - cached_consumer == capacity_) {
-            consumer_pos_.wait(cached_consumer, std::memory_order_acquire);
-            cached_consumer = consumer_pos_.load(std::memory_order_acquire);
+            consumer_pos_.wait(cached_consumer,
+                               std::memory_order_acquire);
+            cached_consumer =
+                consumer_pos_.load(std::memory_order_acquire);
         }
-        std::allocator_traits<Allocator>::construct(alloc_, std::to_address(get_index(pro_pos)),
-                                                    std::forward<Args>(args)...);
+        std::allocator_traits<Allocator>::construct(
+            alloc_, std::to_address(get_index(pro_pos)),
+            std::forward<Args>(args)...);
         producer_pos_.store(pro_pos + 1, std::memory_order_release);
         producer_pos_.notify_one();
     }
@@ -70,21 +83,30 @@ class SpscRingBuffer {
     template<typename... Args>
         requires std::constructible_from<T, Args...>
     bool try_emplace(Args&&... args) {
-        const usize pro_pos = producer_pos_.load(std::memory_order_relaxed);
+        const usize pro_pos =
+            producer_pos_.load(std::memory_order_relaxed);
         if (pro_pos - cached_consumer == capacity_) {
-            cached_consumer = consumer_pos_.load(std::memory_order_acquire);
+            cached_consumer =
+                consumer_pos_.load(std::memory_order_acquire);
             if (pro_pos - cached_consumer == capacity_)
                 return false;
         }
-        std::allocator_traits<Allocator>::construct(alloc_, std::to_address(get_index(pro_pos)),
-                                                    std::forward<Args>(args)...);
+        std::allocator_traits<Allocator>::construct(
+            alloc_, std::to_address(get_index(pro_pos)),
+            std::forward<Args>(args)...);
         producer_pos_.store(pro_pos + 1, std::memory_order_release);
         producer_pos_.notify_one(); // Notifies a waiting thread
         return true;
     }
 
-    bool try_push(const T& v) {}
-    bool try_push(T&& v) {}
+    bool try_push(const T& v)
+        requires std::is_copy_constructible_v<T>
+    {
+        return try_emplace(v);
+    }
+    bool try_push(T&& v) {
+        return try_emplace(std::move(v));
+    }
 
     bool try_pop(T& out) {}
     std::optional<T> try_pop() {}
