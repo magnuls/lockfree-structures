@@ -59,6 +59,7 @@ class SpscRingBuffer {
     SpscRingBuffer(SpscRingBuffer&&) = delete;
     SpscRingBuffer& operator=(SpscRingBuffer&&) = delete;
 
+    // Producer member functions
     template<typename... Args>
     // Requires that we can construct T from Args...
         requires std::constructible_from<T, Args...>
@@ -117,8 +118,12 @@ class SpscRingBuffer {
         emplace(std::move(v));
     }
 
+    // Producer Member Functions
     bool try_pop(T& out) {}
     std::optional<T> try_pop() {}
+    void pop() {
+        try_pop();
+    }
 
     usize size() const {}
     bool empty() const {}
