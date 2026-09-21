@@ -193,16 +193,26 @@ class SpscRingBuffer {
                 producer_pos_.load(std::memory_order_acquire);
         }
         auto slot = get_index(con_pos);
-        x = std::move(*slot);
         std::allocator_traits<Allocator>::destroy(
             alloc_, std::to_address(slot));
         consumer_pos_.store(con_pos + 1, std::memory_order_release);
         consumer_pos_.notify_one();
     }
 
-    usize size() const {}
-    bool empty() const {}
-    bool full() const {}
+    // Size is a guranteed upper bound of the current size
+    usize size() const {
+        const usize cons_pos =
+            consumer_pos_.load(std::memory_order_acquire);
+        const usize prod_pos =
+            producer_pos_.load(std::memory_order_acquire);
+        return std::min(prod_pos - cons_pos, capacity_);
+    }
+    bool empty() const {
+        return size() == 0;
+    }
+    bool full() const {
+        return size() == capacity_;
+    }
 
     static constexpr usize capacity() {}
 
