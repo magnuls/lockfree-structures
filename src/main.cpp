@@ -40,7 +40,8 @@ class SpscRingBuffer {
     static_assert(std::atomic<usize>::is_always_lock_free);
 
   public:
-    SpscRingBuffer(usize capacity, const Allocator& a = Allocator())
+    explicit SpscRingBuffer(usize capacity,
+                            const Allocator& a = Allocator())
         : capacity_(capacity), alloc_(a), mask_(capacity - 1) {
         if (!is_power_of_two(capacity_))
             throw std::invalid_argument(
