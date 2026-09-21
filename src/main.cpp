@@ -161,6 +161,28 @@ class SpscRingBuffer {
         consumer_pos_.notify_one();
         return true;
     }
+
+    // Waits for producer thread
+    void pop(T& x)
+        requires std::is_move_assignable_v<T>
+    {
+        const usize con_pos =
+            consumer_pos_.load(std::memory_order_relaxed);
+        while (cached_producer - con_pos == 0) {
+            producer_pos_.wait(cached_producer,
+                               std::memory_order_acquire);
+            cached_producer =
+                producer_pos_.load(std::memory_order_acquire);
+        }
+        auto slot = get_index(con_pos);
+        x = std::move(*slot);
+        std::allocator_traits<Allocator>::destroy(
+            alloc_, std::to_address(slot));
+        consumer_pos_.store(con_pos + 1, std::memory_order_release);
+        consumer_pos_.notify_one();
+    }
+
+    // Discards front blocks until an element is available
     void pop() {
         const usize con_pos =
             consumer_pos_.load(std::memory_order_relaxed);
