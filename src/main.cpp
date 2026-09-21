@@ -120,10 +120,62 @@ class SpscRingBuffer {
     }
 
     // Producer Member Functions
-    bool try_pop(T& out) {}
-    std::optional<T> try_pop() {}
+
+    // Does not wait for producer
+    // Move front int ( out )
+    bool try_pop(T& out)
+        requires std::is_move_assignable_v<T>
+    {
+        const usize con_pos =
+            consumer_pos_.load(std::memory_order_relaxed);
+        if (cached_producer - con_pos == 0) { // Empty
+            cached_producer =
+                producer_pos_.load(std::memory_order_acquire);
+            if (cached_producer - con_pos == 0) { // Still Empty
+                return false;
+            }
+        }
+        auto slot = get_index(con_pos);
+        out = std::move(*slot);
+        std::allocator_traits<Allocator>::destroy(
+            alloc_, std::to_address(out));
+
+        consumer_pos_.store(con_pos + 1, std::memory_order_release);
+        consumer_pos_.notify_one();
+        return true;
+    }
+    // Discards front does not wait for producer
+    bool try_pop() {
+        const usize con_pos =
+            consumer_pos_.load(std::memory_order_release);
+        if (cached_producer - con_pos == 0) { // Empty
+            cached_producer =
+                producer_pos_.load(std::memory_order_acquire);
+            if (cached_producer - con_pos == 0) {
+                return false;
+            }
+        }
+        std::allocator_traits<Allocator>::destroy(
+            alloc_, std::to_address(get_index(con_pos)));
+        consumer_pos_.store(con_pos + 1, std::memory_order_release);
+        consumer_pos_.notify_one();
+        return true;
+    }
     void pop() {
-        try_pop();
+        const usize con_pos =
+            consumer_pos_.load(std::memory_order_relaxed);
+        while (cached_producer - con_pos == 0) {
+            producer_pos_.wait(cached_producer,
+                               std::memory_order_acquire);
+            cached_producer =
+                producer_pos_.load(std::memory_order_acquire);
+        }
+        auto slot = get_index(con_pos);
+        x = std::move(*slot);
+        std::allocator_traits<Allocator>::destroy(
+            alloc_, std::to_address(slot));
+        consumer_pos_.store(con_pos + 1, std::memory_order_release);
+        consumer_pos_.notify_one();
     }
 
     usize size() const {}
