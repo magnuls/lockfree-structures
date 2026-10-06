@@ -20,8 +20,6 @@ constexpr bool is_power_of_two(T x) {
 #ifdef __cpp_lib_hardware_interference_size
 inline constexpr std::size_t CacheLine =
     std::hardware_destructive_interference_size;
-#elif defined(__APPLE__) && defined(__arch64__)
-inline constexpr std::size_t CacheLine = 128;
 #else
 inline constexpr std::size_t CacheLine = 64;
 #endif
